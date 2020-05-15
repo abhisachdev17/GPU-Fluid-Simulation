@@ -1,0 +1,209 @@
+<html>
+  <head>
+    <title>
+      WebGL - Fluid Simulation
+    </title>
+    <body style="margin: 0px;">
+      <canvas
+        id="fluid-container"
+        width="1024"
+        height="1024"
+        onmousemove="mouseDragged(event)"
+        onmousedown="mouseDown(event)"
+        onmouseup="mouseUp(event)"
+      >
+      </canvas>
+      <script type="x-shader/x-vertex" id="vertexShader">
+        precision mediump float;
+
+        attribute vec2 vertPosition;
+
+        varying vec2 texelCoord;
+        varying vec2 left;
+        varying vec2 right;
+        varying vec2 top;
+        varying vec2 bottom;
+
+        uniform vec2 texelSize;
+
+        void main()
+        {
+          texelCoord = vertPosition * 0.5 + 0.5;
+          left = texelCoord - vec2(texelSize.x, 0.0);
+          right = texelCoord + vec2(texelSize.x, 0.0);
+          top = texelCoord + vec2(0.0, texelSize.y);
+          bottom = texelCoord - vec2(0.0, texelSize.y);
+
+          gl_Position = vec4(vertPosition, 0.0, 1.0);
+        }
+      </script>
+      <script type="x-shader/x-fragment" id="fragmentShader">
+        precision mediump float;
+        precision mediump sampler2D;
+
+        varying vec2 texelCoord;
+        uniform sampler2D tex;
+
+        void main()
+        {
+         gl_FragColor = texture2D(tex, texelCoord);
+        }
+      </script>
+      <script type="x-shader/x-fragment" id="advectShader">
+        precision mediump float;
+        precision mediump sampler2D;
+
+        uniform sampler2D toAdvect;
+        uniform sampler2D inputVelocity;
+
+        uniform float timeStep;
+        uniform vec2 texelSize;
+
+        varying vec2 texelCoord;
+        vec4 bilerp (sampler2D sam, vec2 uv, vec2 tsize) {
+          vec4 s;
+          vec2 st = uv / tsize - 0.5;
+          s.xy = floor(st) + 0.5;
+          s.zw = s.xy + 1.0;
+          vec2 t = fract(st);
+
+          vec4 a = texture2D(sam, s.xy * tsize);
+          vec4 b = texture2D(sam, s.zy * tsize);
+          vec4 c = texture2D(sam, s.xw * tsize);
+          vec4 d = texture2D(sam, s.zw * tsize);
+
+          return mix(mix(a, b, t.x), mix(c, d, t.x), t.y);
+        }
+
+        void main()
+        {
+          vec2 pos = texelCoord - timeStep * texture2D(inputVelocity, texelCoord).xy * texelSize;
+          gl_FragColor = bilerp(toAdvect, pos, texelSize);
+        }
+      </script>
+      <script type="x-shader/x-fragment" id="divergenceShader">
+        precision mediump float;
+        precision mediump sampler2D;
+
+        varying vec2 texelCoord;
+
+        varying highp vec2 left;
+        varying highp vec2 right;
+        varying highp vec2 top;
+        varying highp vec2 bottom;
+
+        uniform sampler2D inputVelocity;
+
+        void main ()
+        {
+            float L = texture2D(inputVelocity, left).x;
+            float R = texture2D(inputVelocity, right).x;
+            float T = texture2D(inputVelocity, top).y;
+            float B = texture2D(inputVelocity, bottom).y;
+            vec2 C = texture2D(inputVelocity, texelCoord).xy;
+
+            if (left.x < 0.0) {
+              L = -C.x;
+            }
+            if (right.x > 1.0) {
+              R = -C.x;
+            }
+            if (top.y > 1.0) {
+               T = -C.y;
+            }
+            if (bottom.y < 0.0) {
+              B = -C.y;
+            }
+            float div = 0.5 * (R - L + T - B);
+            gl_FragColor = vec4(div, 0.0, 0.0,1.0);
+        }
+      </script>
+      <script type="x-shader/x-fragment" id="jacobiShader">
+        precision mediump float;
+        precision mediump sampler2D;
+
+        varying vec2 texelCoord;
+        varying vec2 left;
+        varying vec2 right;
+        varying vec2 top;
+        varying vec2 bottom;
+
+        uniform float alpha;
+        uniform float inverseBeta;
+
+        uniform sampler2D xTex;
+        uniform sampler2D bTex;
+
+        void main ()
+        {
+          float xL = texture2D(xTex, left).x;
+          float xR = texture2D(xTex, right).x;
+          float xT = texture2D(xTex, top).x;
+          float xB = texture2D(xTex, bottom).x;
+          float bC = texture2D(bTex, texelCoord).x;
+
+          gl_FragColor = vec4((xL + xR + xB + xT + alpha*bC) * inverseBeta, 0.0, 0.0, 1.0);
+        }
+      </script>
+      <script type="x-shader/x-fragment" id="gradientSubtractShader">
+        precision mediump float;
+        precision mediump sampler2D;
+
+        varying vec2 texelCoord;
+        varying vec2 left;
+        varying vec2 right;
+        varying vec2 top;
+        varying vec2 bottom;
+
+        uniform sampler2D velocity;
+        uniform sampler2D pressure;
+
+        void main ()
+        {
+          float pL = texture2D(pressure, left).x;
+          float pR = texture2D(pressure, right).x;
+          float pT = texture2D(pressure, top).x;
+          float pB = texture2D(pressure, bottom).x;
+
+          vec2 v = texture2D(velocity, texelCoord).xy;
+          v.xy -= vec2(pR - pL, pT - pB);
+          gl_FragColor = vec4(v, 0.0, 1.0);
+        }
+      </script>
+      <script type="x-shader/x-fragment" id="splatShader">
+        precision mediump float;
+        precision mediump sampler2D;
+
+        varying vec2 texelCoord;
+
+        uniform sampler2D tex;
+        uniform vec2 point;
+        uniform float radius;
+        uniform vec3 color;
+
+        void main ()
+        {
+          vec2 p = point.xy - texelCoord;
+          vec3 base = texture2D(tex, texelCoord).xyz;
+          vec3 splat = color * exp(-dot(p, p)/ radius);
+          gl_FragColor = vec4(base + splat, 1.0);
+        }
+      </script>
+      <script type="x-shader/x-fragment" id="fadeShader">
+        precision mediump float;
+        precision mediump sampler2D;
+
+        varying vec2 texelCoord;
+        uniform sampler2D tex;
+
+        void main ()
+        {
+          vec4 color = texture2D(tex, texelCoord) - vec4(0.0001, 0.0001, 0.0001, 0.0);
+          color = clamp(color, 0.0, 1.0);
+          gl_FragColor = color;
+        }
+      </script>
+      <script src="app.js"></script>
+    </body>
+  </head>
+</html>
