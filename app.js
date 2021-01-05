@@ -17,7 +17,7 @@ var InitDemo = function () {
   supportLinear = gl.getExtension("OES_texture_half_float_linear");
 };
 
-let time = 0.01;
+let time = 0.1;
 var simulateFluid = function (canvas) {
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.clearColor(0.0, 0.0, 0.0, 1.0);
@@ -51,7 +51,6 @@ var simulateFluid = function (canvas) {
     gl.uniform1i(mainProgram.getUniform("tex"), fDensity.bind(0));
     drawOnScreen(mainProgram, null);
 
-    time += 0.0001;
     requestAnimationFrame(draw);
   };
   requestAnimationFrame(draw);
