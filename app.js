@@ -3,11 +3,13 @@ let canvas;
 let JACOBI_ITERATIONS = 20;
 let floatExt;
 let supportLinear;
+let resolution = 1024;
 
 var InitDemo = function () {
   canvas = document.getElementById("fluid-container");
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
+
   console.log("This is working");
   gl = canvas.getContext("webgl");
   if (!gl) {
@@ -36,17 +38,18 @@ var simulateFluid = function (canvas) {
 
   addDensity(0, 0);
   var draw = function () {
-    gl.viewport(0, 0, canvas.width, canvas.height);
+    // gl.viewport(0, 0, canvas.width, canvas.height);
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     step(time);
 
+    gl.viewport(0, 0, canvas.width, canvas.height);
     mainProgram.bind();
     gl.uniform2f(
       mainProgram.getUniform("texelSize"),
-      fDensity.texelSizeX,
-      fDensity.texelSizeY
+      1.0 / canvas.width,
+      1.0 / canvas.height
     );
     gl.uniform1i(mainProgram.getUniform("tex"), fDensity.bind(0));
     drawOnScreen(mainProgram, null);
@@ -124,8 +127,8 @@ class FBOTexture {
 let divergence, fDensity, fVelocity, fPressure;
 let bDensity, bVelocity, bPressure;
 var InitFrameBuffers = function () {
-  var width = canvas.width;
-  var height = canvas.height;
+  var width = resolution;
+  var height = resolution;
   fDensity = new FBOTexture(width, height);
   bDensity = new FBOTexture(width, height);
 
@@ -220,7 +223,7 @@ let fadeProgram = new Program(
 
 var step = function (timestep) {
   gl.disable(gl.BLEND);
-  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.viewport(0, 0, resolution, resolution);
 
   advectionProgram.bind();
   gl.uniform2f(
@@ -252,7 +255,7 @@ var step = function (timestep) {
     bVelocity.texelSizeY
   );
   gl.uniform1i(pressureProgram.getUniform("bTex"), divergence.bind(0));
-  gl.uniform1f(pressureProgram.getUniform("alpha"), -1.0 / 8.0);
+  gl.uniform1f(pressureProgram.getUniform("alpha"), -1.0 / 4.0);
   gl.uniform1f(pressureProgram.getUniform("inverseBeta"), 0.25);
   for (var i = 0; i < JACOBI_ITERATIONS; i++) {
     gl.uniform1i(pressureProgram.getUniform("xTex"), fPressure.bind(1));
@@ -300,6 +303,7 @@ var step = function (timestep) {
     bDensity.texelSizeX,
     bDensity.texelSizeY
   );
+  gl.uniform1f(fadeProgram.getUniform("resolution"), resolution);
   gl.uniform1i(fadeProgram.getUniform("tex"), bDensity.bind(0));
   drawOnScreen(advectionProgram, fDensity.fbo);
 
@@ -312,11 +316,16 @@ var step = function (timestep) {
 };
 
 function addDensity(posX, posY) {
+  gl.viewport(0, 0, resolution, resolution);
   splatProgram.bind();
   gl.uniform1i(splatProgram.getUniform("tex"), fDensity.bind(0));
   gl.uniform2f(splatProgram.getUniform("point"), posX, posY);
   gl.uniform3f(splatProgram.getUniform("color"), 0.5, 0.1, 0.9);
-  gl.uniform1f(splatProgram.getUniform("radius"), 0.0001);
+  gl.uniform1f(splatProgram.getUniform("radius"), 0.0002);
+  gl.uniform1f(
+    splatProgram.getUniform("aspectRatio"),
+    canvas.width / canvas.height
+  );
   drawOnScreen(splatProgram, bDensity.fbo);
 
   var tempDens = fDensity;
@@ -327,11 +336,16 @@ function addDensity(posX, posY) {
 }
 
 function addVelocity(posX, posY, dirX, dirY) {
+  gl.viewport(0, 0, resolution, resolution);
   splatProgram.bind();
   gl.uniform1i(splatProgram.getUniform("tex"), fVelocity.bind(0));
   gl.uniform2f(splatProgram.getUniform("point"), posX, posY);
   gl.uniform3f(splatProgram.getUniform("color"), dirX * 1000, dirY * 1000, 0.0);
-  gl.uniform1f(splatProgram.getUniform("radius"), 0.0001);
+  gl.uniform1f(splatProgram.getUniform("radius"), 0.0002);
+  gl.uniform1f(
+    splatProgram.getUniform("aspectRatio"),
+    canvas.width / canvas.height
+  );
   drawOnScreen(splatProgram, bVelocity.fbo);
 
   var tempVel = fVelocity;
@@ -366,3 +380,18 @@ var mouseUp = function (event) {
 
 InitFrameBuffers();
 simulateFluid(canvas);
+
+var restart = function (res) {
+  console.log(res.value);
+
+  if (res.value == "default") {
+  } else {
+    if (res.value == "Max") {
+      resolution = canvas.width;
+    } else {
+      resolution = res.value;
+    }
+    InitDemo();
+    InitFrameBuffers();
+  }
+};

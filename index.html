@@ -3,11 +3,22 @@
     <title>
       WebGL - Fluid Simulation
     </title>
-    <body style="margin: 0px;">
+    <body style="margin: 0px; overflow: hidden;">
+      <select
+        style="z-index: 1; overflow: hidden; float: right; position: relative;"
+        onchange="restart(this)"
+      >
+        <option value="default">Quality</option>
+        <option value="256">256</option>
+        <option value="512">512</option>
+        <option value="1024">1024</option>
+        <option value="Max">Max</option>
+      </select>
       <canvas
         id="fluid-container"
         width="1024"
         height="1024"
+        style="position: absolute;"
         onmousemove="mouseDragged(event)"
         onmousedown="mouseDown(event)"
         onmouseup="mouseUp(event)"
@@ -180,10 +191,12 @@
         uniform vec2 point;
         uniform float radius;
         uniform vec3 color;
+        uniform float aspectRatio;
 
         void main ()
         {
           vec2 p = point.xy - texelCoord;
+          p.x *= aspectRatio;
           vec3 base = texture2D(tex, texelCoord).xyz;
           vec3 splat = color * exp(-dot(p, p)/ radius);
           gl_FragColor = vec4(base + splat, 1.0);
@@ -195,10 +208,12 @@
 
         varying vec2 texelCoord;
         uniform sampler2D tex;
+        uniform float resolution;
 
         void main ()
         {
-          vec4 color = texture2D(tex, texelCoord) - vec4(0.0001, 0.0001, 0.0001, 0.0);
+          float scale = 0.0001 * resolution / 256.0;
+          vec4 color = texture2D(tex, texelCoord) - vec4(scale, scale, scale, 0.0);
           color = clamp(color, 0.0, 1.0);
           gl_FragColor = color;
         }
